@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="ShadowGraph — Kurumsal seviyede saldırı yüzeyi keşif ve risk analizi platformu">
+    <title>ShadowGraph · Attack Surface Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <link rel="stylesheet" href="/assets/styles.css">
+    <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><circle cx='32' cy='32' r='28' fill='%230891b2'/><path d='M32 12 L48 22 V36 C48 46 32 54 32 54 C32 54 16 46 16 36 V22 Z' fill='%230a1628' stroke='%2306b6d4' stroke-width='2'/></svg>">
+</head>
+<body>
+<div class="app">
+    <!-- ============= TOP NAVIGATION ============= -->
+    <header class="appbar" role="banner">
+        <div class="brand">
+            <div class="brand-mark" aria-hidden="true">
+                <i class="fa-solid fa-shield-halved"></i>
+            </div>
+            <div class="brand-text">
+                <div class="brand-name">ShadowGraph</div>
+                <div class="brand-tag">Attack Surface Intelligence</div>
+            </div>
+        </div>
+
+        <div class="appbar-center">
+            <label class="field" title="İncelenecek tarama seçin">
+                <i class="fa-solid fa-database field-icon"></i>
+                <select class="scan-select" id="scanSelect" aria-label="Aktif tarama">
+                </select>
+            </label>
+            <label class="field grow" title="IP, port, CVE, servis arayın">
+                <i class="fa-solid fa-magnifying-glass field-icon"></i>
+                <input type="search" class="search-box" id="searchBox" placeholder="IP, port, CVE veya servis ara…" aria-label="Arama" />
+            </label>
+        </div>
+
+        <div class="appbar-actions">
+            <button class="iconbtn" id="btnRefresh" title="Verileri yenile" aria-label="Yenile">
+                <i class="fa-solid fa-rotate"></i>
+            </button>
+            <button class="iconbtn" id="btnShare" title="Bu raporun bağlantısını kopyala" aria-label="Paylaş">
+                <i class="fa-solid fa-link"></i>
+            </button>
+            <button class="btn btn-primary" id="btnExport" title="Yazdırılabilir rapor oluştur">
+                <i class="fa-solid fa-file-pdf"></i><span>Rapor Al</span>
+            </button>
+            <div class="status-dot" id="connStatus" title="Sistem durumu">
+                <span class="dot ok"></span>
+                <span class="status-text" id="connText">CANLI</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- ============= SECONDARY TOOLBAR ============= -->
+    <div class="toolbar" role="toolbar" aria-label="Görünüm filtreleri">
+        <div class="toolbar-left">
+            <span class="toolbar-label"><i class="fa-solid fa-filter"></i> Görünüm</span>
+            <div class="filter-btns" id="filterBtns">
+                <button class="fbtn active" data-filter="all"><i class="fa-solid fa-layer-group"></i>Tümü</button>
+                <button class="fbtn" data-filter="target"><i class="fa-solid fa-server"></i>Hedefler</button>
+                <button class="fbtn" data-filter="port"><i class="fa-solid fa-plug"></i>Portlar</button>
+                <button class="fbtn" data-filter="vulnerability"><i class="fa-solid fa-bug"></i>Zafiyetler</button>
+                <button class="fbtn" data-filter="exploit"><i class="fa-solid fa-bolt"></i>Exploit'ler</button>
+                <button class="fbtn" data-filter="shield"><i class="fa-solid fa-shield"></i>WAF/CDN</button>
+            </div>
+        </div>
+        <div class="toolbar-right">
+            <button class="btn btn-ghost" id="btnExpand" title="Tüm düğümleri aç/kapat">
+                <i class="fa-solid fa-up-right-and-down-left-from-center"></i><span>Tümünü Aç</span>
+            </button>
+            <span class="meta-pill" id="lastUpdated" title="Son güncellenme">
+                <i class="fa-regular fa-clock"></i>
+                <span id="lastUpdatedText">—</span>
+            </span>
+        </div>
+    </div>
+
+    <!-- ============= KPI METRIC STRIP ============= -->
+    <section class="kpi-strip" aria-label="Anahtar metrikler">
+        <article class="kpi" data-kpi="hosts">
+            <div class="kpi-icon ok"><i class="fa-solid fa-server"></i></div>
+            <div class="kpi-body">
+                <div class="kpi-label">Aktif Hedef</div>
+                <div class="kpi-value"><span id="sH">0</span></div>
+                <div class="kpi-sub">Toplam cihaz: <b id="sD">0</b></div>
+            </div>
+        </article>
+        <article class="kpi" data-kpi="ports">
+            <div class="kpi-icon info"><i class="fa-solid fa-plug"></i></div>
+            <div class="kpi-body">
+                <div class="kpi-label">Açık Portlar</div>
+                <div class="kpi-value"><span id="sP">0</span></div>
+                <div class="kpi-sub">Tespit edilen erişim noktaları</div>
+            </div>
+        </article>
+        <article class="kpi" data-kpi="services">
+            <div class="kpi-icon warn"><i class="fa-solid fa-cubes"></i></div>
+            <div class="kpi-body">
+                <div class="kpi-label">Servisler</div>
+                <div class="kpi-value"><span id="sS">0</span></div>
+                <div class="kpi-sub">Banner / parmak izi tespit edilen</div>
+            </div>
+        </article>
+        <article class="kpi critical-bg" data-kpi="vulns">
+            <div class="kpi-icon danger"><i class="fa-solid fa-bug"></i></div>
+            <div class="kpi-body">
+                <div class="kpi-label">Zafiyetler</div>
+                <div class="kpi-value danger"><span id="sV">0</span></div>
+                <div class="kpi-sub">CVE eşleşmeli bulgular</div>
+            </div>
+        </article>
+        <article class="kpi" data-kpi="exploits">
+            <div class="kpi-icon purple"><i class="fa-solid fa-bolt"></i></div>
+            <div class="kpi-body">
+                <div class="kpi-label">Exploit'ler</div>
+                <div class="kpi-value purple"><span id="sE">0</span></div>
+                <div class="kpi-sub">Public PoC / Metasploit</div>
+            </div>
+        </article>
+        <article class="kpi" data-kpi="shields">
+            <div class="kpi-icon orange"><i class="fa-solid fa-shield"></i></div>
+            <div class="kpi-body">
+                <div class="kpi-label">CDN / WAF</div>
+                <div class="kpi-value orange"><span id="sSH">0</span></div>
+                <div class="kpi-sub">Tespit edilen koruma katmanları</div>
+            </div>
+        </article>
+    </section>
+
+    <!-- ============= MAIN GRID ============= -->
+    <main class="grid" role="main">
+        <!-- Network Map -->
+        <section class="card map-card" aria-label="Ağ Haritası">
+            <header class="card-head">
+                <div class="card-title">
+                    <i class="fa-solid fa-diagram-project"></i>
+                    <span>Saldırı Yüzeyi Haritası</span>
+                </div>
+                <div class="card-actions">
+                    <span class="legend">
+                        <span class="lg-dot" style="background:#06b6d4"></span>Hedef
+                        <span class="lg-dot" style="background:#10b981"></span>Temiz Port
+                        <span class="lg-dot" style="background:#ef4444"></span>Riskli Port
+                        <span class="lg-dot" style="background:#f59e0b"></span>Servis
+                        <span class="lg-dot" style="background:#a855f7"></span>Exploit
+                    </span>
+                </div>
+            </header>
+            <div id="nc">
+                <div id="network"></div>
+                <div class="hint"><i class="fa-solid fa-arrow-pointer"></i> Hedefe tıklayarak portları açın · Sürükleyerek konumlandırın · Tekerlekle yakınlaştırın</div>
+            </div>
+        </section>
+
+        <!-- Risk Posture Panel -->
+        <aside class="card posture-card" aria-label="Risk Skoru">
+            <header class="card-head">
+                <div class="card-title">
+                    <i class="fa-solid fa-gauge-high"></i>
+                    <span>Risk Skoru</span>
+                </div>
+            </header>
+            <div class="posture-body">
+                <div class="risk-gauge" id="riskGauge" data-level="info">
+                    <svg viewBox="0 0 200 135" class="gauge-svg" aria-hidden="true">
+                        <defs>
+                            <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stop-color="#10b981"/>
+                                <stop offset="40%" stop-color="#f59e0b"/>
+                                <stop offset="75%" stop-color="#ef4444"/>
+                                <stop offset="100%" stop-color="#dc2626"/>
+                            </linearGradient>
+                        </defs>
+                        <path class="gauge-track" d="M 20 110 A 80 80 0 0 1 180 110" stroke="rgba(148,163,184,.18)" stroke-width="14" fill="none" stroke-linecap="round"/>
+                        <path id="gaugeFill" class="gauge-fill" d="M 20 110 A 80 80 0 0 1 180 110" stroke="url(#gaugeGrad)" stroke-width="14" fill="none" stroke-linecap="round" stroke-dasharray="251.3" stroke-dashoffset="251.3"/>
+                        <line id="gaugeNeedle" x1="100" y1="110" x2="100" y2="50" stroke="#e2e8f0" stroke-width="3" stroke-linecap="round" transform="rotate(-90 100 110)"/>
+                        <circle cx="100" cy="110" r="7" fill="#0a1628" stroke="#e2e8f0" stroke-width="2"/>
+                        <text x="22" y="128" text-anchor="middle" class="gauge-tick">0</text>
+                        <text x="178" y="128" text-anchor="middle" class="gauge-tick">10</text>
+                    </svg>
+                    <div class="gauge-readout">
+                        <div class="gauge-score">
+                            <span id="gH" class="gauge-num">—</span><span class="gauge-suffix">&nbsp;/&nbsp;10</span>
+                        </div>
+                        <div class="gauge-level" id="gaugeLevel">BEKLENİYOR</div>
+                    </div>
+                </div>
+                <div class="posture-meta">
+                    <div class="meta-row">
+                        <span class="meta-key">Risk Bulguları</span>
+                        <span class="meta-val danger" id="gR">0</span>
+                    </div>
+                    <div class="meta-row">
+                        <span class="meta-key">Kritik Yollar</span>
+                        <span class="meta-val danger" id="gCrit">0</span>
+                    </div>
+                    <div class="meta-row">
+                        <span class="meta-key">Yüksek Yollar</span>
+                        <span class="meta-val warn" id="gHigh">0</span>
+                    </div>
+                    <div class="meta-row">
+                        <span class="meta-key">Toplam Yollar</span>
+                        <span class="meta-val" id="gTotal">0</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <!-- ============= BOTTOM PANELS ============= -->
+    <section class="bot-grid">
+        <article class="card panel" aria-label="Varlık Envanteri">
+            <header class="card-head">
+                <div class="card-title">
+                    <i class="fa-solid fa-list-check"></i>
+                    <span>Varlık Envanteri</span>
+                </div>
+                <span class="count-pill" id="t1Count">0</span>
+            </header>
+            <div class="card-body scroll">
+                <table class="data-table" id="t1">
+                    <thead><tr>
+                        <th>Durum</th>
+                        <th>Cihaz</th>
+                        <th>IP Adresi</th>
+                        <th>İşletim Sistemi</th>
+                        <th class="num">Açık Port</th>
+                    </tr></thead>
+                    <tbody></tbody>
+                </table>
+                <div class="empty-state" id="t1Empty" hidden>
+                    <i class="fa-solid fa-inbox"></i>
+                    <div>Henüz tarama bulunmuyor.</div>
+                </div>
+            </div>
+        </article>
+
+        <article class="card panel" aria-label="AI Tehdit Analizi">
+            <header class="card-head">
+                <div class="card-title">
+                    <i class="fa-solid fa-brain"></i>
+                    <span>AI Tehdit Analizi</span>
+                </div>
+                <button class="btn btn-primary btn-sm" id="btnAnalyze">
+                    <i class="fa-solid fa-play"></i><span>Analiz Et</span>
+                </button>
+            </header>
+            <div class="card-body scroll" id="aiPanel">
+                <div class="empty-state">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <div>Henüz analiz çalıştırılmadı.</div>
+                    <div class="empty-hint">"Analiz Et" düğmesi ile saldırı yollarını ve önerileri üretin.</div>
+                </div>
+            </div>
+        </article>
+
+        <article class="card panel" aria-label="Bulgular">
+            <header class="card-head">
+                <div class="card-title">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <span>Portlar &amp; Bulgular</span>
+                </div>
+                <span class="count-pill" id="t3Count">0</span>
+            </header>
+            <div class="card-body scroll">
+                <table class="data-table" id="t3">
+                    <thead><tr>
+                        <th>Tip</th>
+                        <th>Servis / CVE / Exploit</th>
+                        <th>Önem Derecesi</th>
+                    </tr></thead>
+                    <tbody></tbody>
+                </table>
+                <div class="empty-state" id="t3Empty" hidden>
+                    <i class="fa-solid fa-shield-halved"></i>
+                    <div>Bu taramada bulgu yok.</div>
+                </div>
+            </div>
+        </article>
+    </section>
+
+    <!-- ============= FOOTER ============= -->
+    <footer class="appfoot">
+        <div>
+            <strong>ShadowGraph</strong> · Attack Surface Intelligence Platform
+            <span class="sep">·</span>
+            Kurumsal Seviye Sızma Testi Aracı
+        </div>
+        <div class="foot-meta">
+            <span><i class="fa-solid fa-lock"></i> Yerel oturum</span>
+            <span class="sep">·</span>
+            <span><i class="fa-solid fa-shield-check"></i> Veriler dışarı çıkarılmaz</span>
+        </div>
+    </footer>
+</div>
+
+<!-- Toast container -->
+<div class="toasts" id="toasts" aria-live="polite" aria-atomic="true"></div>
+
+<script src="/assets/app.js"></script>
+</body>
+</html>

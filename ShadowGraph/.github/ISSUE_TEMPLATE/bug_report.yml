@@ -1,0 +1,68 @@
+name: Bug Report
+description: Hata bildir — tekrar üretilebilir bir şekilde
+title: "[Bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ShadowGraph'ta bir hata tespit ettiğin için teşekkürler! Aşağıdaki bilgileri doldurursan tanılamayı hızlandırırsın.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Ne oldu?
+      description: Gözlemlenen davranışı kısaca açıkla.
+      placeholder: "scan komutu çalıştırdım ve ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Beklenen davranış
+      description: Ne olmasını bekliyordun?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Yeniden üretim adımları
+      description: Hata nasıl tekrar üretilir? Komut/hedef örneklerini ekle (gerekirse anonimleştir).
+      placeholder: |
+        1. `shadowgraph scan -t 192.168.1.0/24`
+        2. `shadowgraph ui`
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: ShadowGraph sürümü
+      placeholder: "v0.2.0 veya git commit hash"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: İşletim sistemi
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Diğer
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: İlgili log / konsol çıktısı
+      description: Varsa `shadowgraph.log` içinden ilgili satırları veya konsol hatasını ekle.
+      render: shell
+  - type: checkboxes
+    id: confirms
+    attributes:
+      label: Onaylar
+      options:
+        - label: Bu issue için mevcut açık/kapalı kayıtları aradım, duplike değil.
+          required: true
+        - label: Gerekirse debug loglarını paylaşabilirim.
+          required: false

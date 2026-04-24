@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Güvenlik açıkları
+    url: https://github.com/shadowgraph/core/security/advisories/new
+    about: Güvenlik zafiyeti bildirimi — lütfen açık issue açma, güvenli bildirim kanalını kullan.

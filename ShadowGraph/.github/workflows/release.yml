@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}/${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            ext: ""
+          - os: linux
+            arch: arm64
+            ext: ""
+          - os: darwin
+            arch: amd64
+            ext: ""
+          - os: darwin
+            arch: arm64
+            ext: ""
+          - os: windows
+            arch: amd64
+            ext: ".exe"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: 0
+        run: |
+          mkdir -p dist
+          OUT="dist/shadowgraph-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}"
+          go build -v -trimpath \
+            -ldflags="-s -w -X main.Version=${GITHUB_REF_NAME}" \
+            -o "$OUT" ./main.go
+
+      - name: Package
+        run: |
+          cd dist
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            zip "shadowgraph-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.zip" "shadowgraph-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}"
+          else
+            tar -czf "shadowgraph-${{ github.ref_name }}-${{ matrix.os }}-${{ matrix.arch }}.tar.gz" "shadowgraph-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadowgraph-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/shadowgraph-${{ github.ref_name }}-*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Compute SHA256
+        run: |
+          cd dist
+          sha256sum shadowgraph-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/shadowgraph-*
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

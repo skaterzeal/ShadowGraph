@@ -1,0 +1,34 @@
+name: Feature Request
+description: Yeni bir özellik veya iyileştirme öner
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Çözmek istediğin problem
+      description: Bu özellik hangi ihtiyaç veya sıkıntıyı gideriyor?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Önerilen çözüm
+      description: Nasıl çalışmalı? Komut satırı/UI için örnek verebilirsen güzel olur.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatifler
+      description: Düşündüğün başka çözümler var mı?
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Senin için öncelik
+      options:
+        - Düşük (nice to have)
+        - Orta
+        - Yüksek (engelliyor)
+    validations:
+      required: true

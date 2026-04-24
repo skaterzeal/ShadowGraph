@@ -1,0 +1,253 @@
+package cmd
+
+import (
+	"fmt"
+	"net/http"
+
+	"github.com/shadowgraph/core/internal/db"
+	"github.com/spf13/cobra"
+)
+
+var port int
+
+const htmlContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShadowGraph | Advanced Attack Path</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: #020617; /* Slate 950 */
+            color: #f8fafc;
+            font-family: 'Space Grotesk', sans-serif;
+            overflow: hidden;
+            /* Yüksek Okunabilirlik İçin Geometrik Matrix Arka Planı */
+            background-image: radial-gradient(rgba(14, 165, 233, 0.15) 2px, transparent 2px);
+            background-size: 40px 40px;
+        }
+        
+        /* CRT Taraması (Lazer) Animasyonu */
+        .scanline {
+            position: fixed; top: 0; left: 0; width: 100%; height: 3px;
+            background: rgba(56, 189, 248, 0.7);
+            box-shadow: 0 0 15px 3px rgba(56, 189, 248, 0.5);
+            animation: scaneffect 6s linear infinite;
+            z-index: 999; pointer-events: none; opacity: 0.8;
+        }
+        @keyframes scaneffect {
+            0% { top: -5%; }
+            100% { top: 105%; }
+        }
+
+        #network { width: 100%; height: 100vh; }
+        
+        .sidebar {
+            position: absolute; top: 20px; left: 20px; width: 340px;
+            background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 16px; padding: 25px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7); z-index: 10;
+        }
+        
+        #details-panel {
+            position: absolute; top: 20px; right: 20px; width: 360px;
+            background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(20px);
+            border: 1px solid #ef4444; border-radius: 16px; padding: 25px;
+            box-shadow: 0 0 30px rgba(239, 68, 68, 0.25); z-index: 10;
+            display: none; transition: all 0.3s ease;
+        }
+        #details-panel h2 { margin-top: 0; font-size: 1.3rem; color: #f8fafc; border-bottom: 2px solid #334155; padding-bottom: 12px; }
+        .data-row { margin-bottom: 12px; font-size: 0.95rem; }
+        .data-label { color: #94a3b8; display: block; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1.5px; }
+        .data-value { color: #e2e8f0; font-weight: 600; margin-top: 5px; }
+        .cve-badge { display: inline-block; padding: 6px 12px; border-radius: 6px; background: linear-gradient(45deg, #ef4444, #b91c1c); color: white; font-weight: bold; font-size: 0.85rem; margin-bottom:15px; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.4);}
+        
+        h1 { font-size: 1.8rem; margin: 0 0 12px 0; background: -webkit-linear-gradient(45deg, #0cebeb, #20e3b2, #29ffc6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        p { font-size: 0.95rem; color: #94a3b8; line-height: 1.6; }
+        .stats { margin-top: 25px; padding-top: 25px; border-top: 1px solid rgba(255, 255, 255, 0.1); display: flex; justify-content: space-between; }
+        .stat-box { background: rgba(0,0,0,0.5); padding: 15px; border-radius: 12px; text-align: center; width: 45%; border: 1px solid transparent; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .stat-box:hover { background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); transform: translateY(-4px); box-shadow: 0 4px 20px rgba(56, 189, 248, 0.2);}
+        .stat-value { font-size: 2rem; font-weight: 700; color: #38bdf8; text-shadow: 0 0 10px rgba(56, 189, 248, 0.5); }
+    </style>
+</head>
+<body>
+
+    <div class="scanline"></div>
+
+    <div class="sidebar">
+        <h1>ShadowGraph UI</h1>
+        <p>Yapay Zeka Destekli Otonom Zafiyet Haritalama ve Atak Zinciri Paneli.</p>
+        <div class="stats">
+            <div class="stat-box">
+                <div class="stat-value" id="nodeCount">0</div>
+                Varlık
+            </div>
+            <div class="stat-box">
+                <div class="stat-value" id="edgeCount">0</div>
+                Zincir
+            </div>
+        </div>
+    </div>
+
+    <!-- Tıklanan objelerin detayını gösterme paneli -->
+    <div id="details-panel">
+        <h2>Risk Spektrumu</h2>
+        <div id="details-content">Detaylar yükleniyor...</div>
+    </div>
+
+    <div id="network"></div>
+
+    <script>
+        async function fetchGraphData() {
+            try {
+                const response = await fetch('/api/graph');
+                const data = await response.json();
+                document.getElementById('nodeCount').innerText = data.nodes ? data.nodes.length : 0;
+                document.getElementById('edgeCount').innerText = data.edges ? data.edges.length : 0;
+                return data;
+            } catch (error) {
+                console.error('Veri çekilemedi:', error);
+                return { nodes: [], edges: [] };
+            }
+        }
+
+        async function initNetwork() {
+            const data = await fetchGraphData();
+            
+            // STYLING: Premium UI/UX ve Okunabilirlik Çözümleri
+            const styleGroups = {
+                target: { shape: 'hexagon', color: { background: '#2563eb', border: '#60a5fa', hover: { background: '#3b82f6', border: '#93c5fd' } }, borderWidth: 3, font: { color: '#ffffff', strokeWidth: 5, strokeColor: '#020617', size: 18, face: 'Space Grotesk' }, size: 40 },
+                port: { shape: 'dot', color: { background: '#10b981', border: '#34d399', hover: { background: '#059669', border: '#6ee7b7' } }, borderWidth: 2, font: { color: '#f8fafc', strokeWidth: 4, strokeColor: '#020617', size: 16, face: 'Space Grotesk' }, size: 25 },
+                endpoint: { shape: 'square', color: { background: '#f59e0b', border: '#fbbf24', hover: { background: '#d97706', border: '#fcd34d' } }, borderWidth: 2, font: { color: '#f8fafc', strokeWidth: 4, strokeColor: '#020617', size: 16, face: 'Space Grotesk' }, size: 25 },
+                vulnerability: { shape: 'star', color: { background: '#ef4444', border: '#fca5a5', hover: { background: '#b91c1c', border: '#fecaca' } }, borderWidth: 3, font: { color: '#fca5a5', strokeWidth: 4, strokeColor: '#020617', size: 16, face: 'Space Grotesk' }, size: 35 }
+            };
+
+            const styledNodes = (data.nodes || []).map(n => {
+                let parsedData = {};
+                try { parsedData = JSON.parse(n.data || "{}"); } catch(e){}
+                
+                let displayLabel = n.label;
+                if(n.group === "vulnerability" && parsedData.cve) {
+                    displayLabel = parsedData.cve;
+                }
+
+                if(styleGroups[n.group]) {
+                    return { ...n, label: displayLabel, ...styleGroups[n.group], _rawData: parsedData };
+                }
+                return { ...n, label: displayLabel, shape: 'dot', color: '#64748b', font: { color: 'white' }, _rawData: parsedData};
+            });
+
+            const styledEdges = (data.edges || []).map(e => ({
+                ...e,
+                color: { color: '#64748b', highlight: '#0ea5e9', hover: '#38bdf8' },
+                arrows: { to: { enabled: true, scaleFactor: 1.2 } },
+                smooth: { type: 'discrete' },
+                width: 2,
+                font: { align: 'middle', color: '#cbd5e1', size: 14, background: '#020617', strokeWidth: 0, face: 'Space Grotesk' }
+            }));
+
+            const container = document.getElementById('network');
+            const graphData = {
+                nodes: new vis.DataSet(styledNodes),
+                edges: new vis.DataSet(styledEdges)
+            };
+            
+            const options = {
+                nodes: { shadow: { enabled: true, color: 'rgba(0,0,0,0.9)', size: 20 } },
+                edges: { shadow: true },
+                physics: {
+                    solver: 'forceAtlas2Based',
+                    // Fizik Motorunda Node'ların birbirine yapışmasını önleyen "SpringLength" ayarı 250'ye çıkarıldı.
+                    forceAtlas2Based: { gravitationalConstant: -120, centralGravity: 0.005, springLength: 250, springConstant: 0.05 }
+                },
+                interaction: { hover: true, tooltipDelay: 200, zoomView: true }
+            };
+            
+            const network = new vis.Network(container, graphData, options);
+
+            // Sağ menü Detay Gösterici (Tıklama Eventi)
+            network.on("click", function (params) {
+                const detailsPanel = document.getElementById('details-panel');
+                const detailsContent = document.getElementById('details-content');
+                
+                if (params.nodes.length > 0) {
+                    const nodeId = params.nodes[0];
+                    const node = styledNodes.find(n => n.id === nodeId);
+                    
+                    let html = "";
+                    if(node.group === "vulnerability") {
+                        detailsPanel.style.borderColor = "#ef4444";
+                        detailsPanel.style.boxShadow = "0 0 30px rgba(239, 68, 68, 0.4)";
+                        html += "<div class='cve-badge'>" + node._rawData.severity + " TEHLİKE (CVE)</div>";
+                        html += "<div class='data-row'><span class='data-label'>Zafiyet Adı</span><div class='data-value' style='color:#fca5a5'>" + node._rawData.cve + "</div></div>";
+                    } else if (node.group === "endpoint") {
+                        detailsPanel.style.borderColor = "#f59e0b";
+                        detailsPanel.style.boxShadow = "0 0 30px rgba(245, 158, 11, 0.4)";
+                        html += "<div class='cve-badge' style='background:#f59e0b'>SERVİS BİLGİSİ (Yazılım)</div>";
+                    } else if (node.group === "port") {
+                        detailsPanel.style.borderColor = "#10b981";
+                        detailsPanel.style.boxShadow = "0 0 30px rgba(16, 185, 129, 0.4)";
+                        html += "<div class='cve-badge' style='background:#10b981'>AÇIK PORT (GİRİŞ)</div>";
+                    } else {
+                        detailsPanel.style.borderColor = "#3b82f6";
+                        detailsPanel.style.boxShadow = "0 0 30px rgba(59, 130, 246, 0.4)";
+                        html += "<div class='cve-badge' style='background:#3b82f6'>HEDEF SİSTEM</div>";
+                    }
+
+                    html += "<div class='data-row'><span class='data-label'>Sistem Etiketi</span><div class='data-value'>" + node.label + "</div></div>";
+                    
+                    for (const [key, value] of Object.entries(node._rawData)) {
+                        if(key !== "cve" && key !== "severity") {
+                            html += "<div class='data-row'><span class='data-label'>"+key+"</span><div class='data-value'>" + value + "</div></div>";
+                        }
+                    }
+
+                    detailsContent.innerHTML = html;
+                    detailsPanel.style.display = "block";
+                } else {
+                    detailsPanel.style.display = "none";
+                }
+            });
+        }
+
+        initNetwork();
+    </script>
+</body>
+</html>`
+
+var uiCmd = &cobra.Command{
+	Use:   "ui",
+	Short: "İnteraktif Zafiyet Haritası (Node Graph) panelini başlatır",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("[\033[36m👉\033[0m] Büyüleyici Görsel Panel %d portunda başlatıldı!\n", port)
+		fmt.Printf("[\033[32m👉\033[0m] Tarayıcı üzerinden gidin: http://localhost:%d\n\n", port)
+		fmt.Println("[\033[33m!\033[0m] Panelden çıkmak için CTRL+C yapabilirsiniz.")
+		
+		http.HandleFunc("/api/graph", func(w http.ResponseWriter, r *http.Request) {
+			data, err := db.GetGraphData()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(data)
+		})
+
+		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html")
+			w.Write([]byte(htmlContent))
+		})
+		
+		if err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil); err != nil {
+			fmt.Println("[-] Sunucu hatası:", err)
+		}
+	},
+}
+
+func init() {
+	rootCmd.AddCommand(uiCmd)
+	uiCmd.Flags().IntVarP(&port, "port", "p", 8080, "UI panelinin çalışacağı port numarası")
+}
